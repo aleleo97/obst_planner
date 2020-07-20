@@ -39,8 +39,8 @@ class OccupancyGridManager(object):
         rospy.loginfo("OccupancyGridManager for '" +
                       str(self._sub.resolved_name) +
                       "'initialized!")
-        rospy.loginfo("Height (x): " + str(self.height) +
-                      " Width (y): " + str(self.width) +
+        rospy.loginfo("Height (y): " + str(self.height) +
+                      " Width (x): " + str(self.width) +
                       " reference_frame: " + str(self.reference_frame) +
                       " origin: " + str(self.origin))
 
@@ -72,6 +72,7 @@ class OccupancyGridManager(object):
         self._grid_data = np.array(data.data,
                                    dtype=np.int8).reshape(data.info.height,
                                                           data.info.width)
+        self._grid_data = self._grid_data.T
         self._reference_frame = data.header.frame_id
         # self._grid_data = np.zeros((data.info.height,
         #                             data.info.width),
@@ -86,6 +87,7 @@ class OccupancyGridManager(object):
                            dtype=np.int8).reshape(data.height, data.width)
         self._grid_data[data.y:data.y +
                         data.height, data.x:data.x + data.width] = data_np
+        self._grid_data = self._grid_data.T
         # print("grid update:")
         # print(self._grid_data)
 
@@ -109,9 +111,9 @@ class OccupancyGridManager(object):
             raise IndexError("Coordinates out of grid (in frame: {}) x: {}, y: {} must be in between: [{}, {}], [{}, {}]. Internal error: {}".format(
                 self.reference_frame, x, y,
                 self.origin.position.x,
-                self.origin.position.x + self.height * self.resolution,
+                self.origin.position.x + self.width * self.resolution,
                 self.origin.position.y,
-                self.origin.position.y + self.width * self.resolution,
+                self.origin.position.y + self.height * self.resolution,
                 e))
 
     def get_cost_from_costmap_x_y(self, x, y):
@@ -120,10 +122,10 @@ class OccupancyGridManager(object):
         else:
             raise IndexError(
                 "Coordinates out of gridmap, x: {}, y: {} must be in between: [0, {}], [0, {}]".format(
-                    x, y, self.height, self.width))
+                    x, y, self.width, self.height))
 
     def is_in_gridmap(self, x, y):
-        if -1 < x < self.height and -1 < y < self.width:
+        if -1 < x < self.width and -1 < y < self.height:
             return True
         else:
             return False
@@ -221,63 +223,65 @@ class OccupancyGridManager(object):
 
         return -1, -1, -1
 
+    def get_area_of_obst(self, x, y,cost_threshold, max_radius,bigger_than=False):
+        count = 0
+        # Check the actual goal cell
+        try:
+            cost = self.get_cost_from_costmap_x_y(x, y)
+        except IndexError:
+            return None
 
-if __name__ == '__main__':
-    rospy.init_node('test_occ_grid')
-    ogm = OccupancyGridManager('/move_base_flex/global_costmap/costmap',
-                               subscribe_to_updates=True)
-    wx1, wy1 = ogm.get_world_x_y(0, 0)
-    print("world from costmap coords  0 0: ")
-    print((wx1, wy1))
-    cx1, cy1 = ogm.get_costmap_x_y(wx1, wy1)
-    print("back to costmap: ")
-    print((cx1, cy1))
+        if bigger_than:
+            if cost > cost_threshold:
+                count += 1
+        else:
+            if cost < cost_threshold:
+                count += 1
 
-    cx2, cy2 = ogm.get_costmap_x_y(0.0, 0.0)
-    print("costmap from world coords  0 0: ")
-    print((cx2, cy2))
-    wx2, wy2 = ogm.get_world_x_y(cx2, cy2)
-    print("back to world: ")
-    print((wx2, wy2))
+        def create_radial_offsets_coords(radius):
+            """
+            Creates an ordered by radius (without repetition)
+            generator of coordinates to explore around an initial point 0, 0
+            For example, radius 2 looks like:
+            [(-1, -1), (-1, 0), (-1, 1), (0, -1),  # from radius 1
+            (0, 1), (1, -1), (1, 0), (1, 1),  # from radius 1
+            (-2, -2), (-2, -1), (-2, 0), (-2, 1),
+            (-2, 2), (-1, -2), (-1, 2), (0, -2),
+            (0, 2), (1, -2), (1, 2), (2, -2),
+            (2, -1), (2, 0), (2, 1), (2, 2)]
+            """
+            # We store the previously given coordinates to not repeat them
+            # we use a Dict as to take advantage of its hash table to make it more efficient
+            coords = {}
+            # iterate increasing over every radius value...
+            for r in range(1, radius + 1):
+                # for this radius value... (both product and range are generators too)
+                tmp_coords = product(range(-r, r + 1), repeat=2)
+                # only yield new coordinates
+                for i, j in tmp_coords:
+                    if (i, j) != (0, 0) and not coords.get((i, j), False):
+                        coords[(i, j)] = True
+                        yield (i, j)
 
-    cost = ogm.get_cost_from_costmap_x_y(cx1, cy1)
-    print("cost cx1, cy1: " + str(cost))
-    cost = ogm.get_cost_from_world_x_y(wx1, wy1)
-    print("cost wx1, wy1: " + str(cost))
-    cost = ogm.get_cost_from_costmap_x_y(cx2, cy2)
-    print("cost cx2, cy2: " + str(cost))
-    cost = ogm.get_cost_from_world_x_y(wx2, wy2)
-    print("cost wx2, wy2: " + str(cost))
+        coords_to_explore = create_radial_offsets_coords(max_radius)
 
-    # known place right now
-    cost = ogm.get_cost_from_world_x_y(0.307, -0.283)
-    print("cost of know nplace is: " + str(cost))
+        for idx, radius_coords in enumerate(coords_to_explore):
+            # for coords in radius_coords:
+            tmp_x, tmp_y = radius_coords
+            # print("Checking coords: " +
+            #       str((x + tmp_x, y + tmp_y)) +
+            #       " (" + str(idx) + " / " + str(len(coords_to_explore)) + ")")
+            try:
+                cost = self.get_cost_from_costmap_x_y(x + tmp_x, y + tmp_y)
+            # If accessing out of grid, just ignore
+            except IndexError:
+                pass
+            if bigger_than:
+                if cost > cost_threshold:
+                    count += 1
 
-    # cost = ogm.get_cost_from_world_x_y(6.485, -1.462)
-    # print("cost of known place is: " + str(cost))
-    # cx, cy = ogm.get_costmap_x_y(6.485, -1.462)
-    # print("from costmap coords: " + str((cx, cy)))
+            else:
+                if cost < cost_threshold:
+                    count += 1
 
-    print("trying to access out of bounds")
-    try:
-        cost = ogm.get_cost_from_costmap_x_y(9999, 0)
-        print(cost)
-    except IndexError as e:
-        print("We got, correctly, indexerror: " + str(e))
-    try:
-        cost = ogm.get_cost_from_costmap_x_y(0, 9999)
-        print(cost)
-    except IndexError as e:
-        print("We got, correctly, indexerror: " + str(e))
-
-    il = range(0, ogm.height)
-    # reverse the list as the origin coordinate is bottom left
-    il.reverse()
-    for i in il:
-        accum = ''
-        l = range(0, ogm.width)
-        # l.reverse()
-        for j in l:
-            accum += str(ogm.get_cost_from_costmap_x_y(i, j)) + ' '
-            # print(ogm.get_cost_from_costmap_x_y(i, 270))
-        print accum
+        return count
