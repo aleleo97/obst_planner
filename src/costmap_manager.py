@@ -10,7 +10,7 @@ from itertools import product
 """
 Class to deal with OccupancyGrid in Python
 as in local / global costmaps.
-Author: Sammy Pfeiffer <Sammy.Pfeiffer at student.uts.edu.au>
+Author: Sammy Pfeiffer <Sammy.Pfeiffer at student.uts.edu.au> (it was all wrong)
 Modified: Alessandro Leonardi 
 """
 
