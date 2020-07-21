@@ -1,4 +1,13 @@
 # obst_planner
+# Requirements:
+Python3 environment that has the geometry and geometry2 package ros correctly installed 
+- library : 
+cvxpy
+sympy 
+numpy
+math
+
+# Details
 This proxy algo is the planner version with one obstacle avoidance of convex optimization trajectory finder.
 This is based only on the costmap, it calculate directly the trajectory by knowing that the map is complitly empty and there is only a circular obstacle that must be avoid.
 The shape of the obstacle is important beacuse it must be a convex shape, we can use any shape but the algo will be consider the shape as circular.
