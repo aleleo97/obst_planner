@@ -13,13 +13,12 @@ from sympy import *
 from opt_ost import ConvexOpt
 from model import DiscretizeandLinearizeGeneric
 from std_srvs.srv import Empty, EmptyResponse 
+from costmap_manager import OccupancyGridManager
 
 # --- Globals ---- 
 # Position
 init = PoseStamped()		# Initial position
-init.header.frame_id = '/map'
 goal = PoseStamped()		# Goal position
-goal.header.frame_id = '/map'
 pos = PoseStamped()			# Current position
 
 # Mapping
@@ -33,6 +32,8 @@ gScore = []					# The gScore set
 # Utilities (e.g. flags, etc)
 haveInitial = 0
 haveGoal = 0
+#define the position of obstacle 
+p = []
 #-----define the tf functions ----
 def euler_to_quaternion( yaw ,roll = 0, pitch = 0  ):
 
@@ -56,8 +57,8 @@ def quaternion_to_euler(x, y, z, w):
     t4 = +1.0 - 2.0 * (y * y + z * z)
     yaw = math.atan2(t3, t4)
     return [yaw, pitch, roll]
-
-    
+#supporting fonction to find the obstacle center
+	
 # ---- Subscriber Callbacks ----
 # Initial pose msg comes from /initialpose topic, which is of PoseStamped() type
 def initCallback(msg):
@@ -89,6 +90,7 @@ def mapInfoCallback(msg):
 	mapInfo = msg
 
 def service_callback(msg):
+    global p
     global haveGoal
     rospy.loginfo("Waiting for initial and goal poses")
     while haveGoal == 0:
@@ -101,6 +103,7 @@ def service_callback(msg):
     haveGoal = 0
     # Publish the path continuously
     global pathPub
+    print(p)
     pathPub.publish(path)
     return EmptyResponse()
 
@@ -118,8 +121,19 @@ def planner():
 	goalSub = rospy.Subscriber('move_base_simple/goal', PoseStamped, goalCallback)
 	cMapSub = rospy.Subscriber('move_base_node/global_costmap/costmap', OccupancyGrid, costmapCallback)
 	infoSub = rospy.Subscriber('map_metadata', MapMetaData, mapInfoCallback)
-	
-	
+	ogm = OccupancyGridManager('/move_base/global_costmap/costmap',subscribe_to_updates=False)  # default False
+	def find_center():
+        # Subscribe to the nav_msgs/OccupancyGrid topic
+		x,y = ogm.get_costmap_x_y(0, 0)
+		coordinate = ogm.get_closest_cell_over_cost(x=x, y=y, cost_threshold=98, max_radius=30)
+		area= (ogm.get_area_of_obst(coordinate[0], coordinate[1],98,15,True))
+		raggio = int (math.sqrt(area/(3.14)))
+		center = ogm.get_center_obst(coordinate[0], coordinate[1],98,radius_obst = raggio*2,radius_tollerance = raggio)
+		p = ogm.get_world_x_y(center[0],center[1])
+		p = np.array([p[0],p[1]])
+		return p
+	global p
+	p = find_center()
 	# Set rate
 	r = rospy.spin() # 10 Hz
 		
@@ -169,9 +183,7 @@ def search():
     uante = [[None] * x_len * n]
     xante = [[None] * x_len * n]
     traj_fin = [[None]*x_len ]
-    p = np.array([1.6,1]) 
-    #set the start time 
-    start = time.time()
+    global p
     #iteration to find the optimum result
     for i in range (18):
         #resolution discrete sistem
@@ -204,22 +216,6 @@ def search():
         position.header.frame_id = '/map'
         path.poses.append(position)
     return path
-
-def poseToGrid(pose):
-	# Converts from pose in meters to pose in grid units (helper function)
-	grid_x = int((pose.pose.position.x - mapInfo.origin.position.x) / mapInfo.resolution)
-	grid_y = int((pose.pose.position.y - mapInfo.origin.position.y) / mapInfo.resolution)
-	pose.pose.position.x = grid_x
-	pose.pose.position.y = grid_y
-	return pose
-	
-def gridToPose(pose):
-	# Converts from grid units to pose in meters (helper function)
-	x = (pose.pose.position.x*mapInfo.resolution) + mapInfo.origin.position.x
-	y = (pose.pose.position.y*mapInfo.resolution) + mapInfo.origin.position.y
-	pose.pose.position.x = x
-	pose.pose.position.y = y
-	return pose
 
 
 if __name__ == "__main__":

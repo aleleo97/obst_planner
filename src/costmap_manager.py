@@ -6,10 +6,12 @@ from map_msgs.msg import OccupancyGridUpdate
 import numpy as np
 from itertools import product
 
+
 """
 Class to deal with OccupancyGrid in Python
 as in local / global costmaps.
 Author: Sammy Pfeiffer <Sammy.Pfeiffer at student.uts.edu.au>
+Modified: Alessandro Leonardi 
 """
 
 
@@ -22,7 +24,6 @@ class OccupancyGridManager(object):
         self._grid_data = None
         self._occ_grid_metadata = None
         self._reference_frame = None
-        rospy.init_node('listener_costmap', anonymous=True)
         self._sub = rospy.Subscriber(topic, OccupancyGrid,
                                      self._occ_grid_cb,
                                      queue_size=1)
@@ -285,3 +286,76 @@ class OccupancyGridManager(object):
                     count += 1
 
         return count
+
+    def get_center_obst(self, x, y, cost_threshold,radius_obst,radius_tollerance):
+        coordinate = [[x,y]]
+        center_probability_prec = 0
+        # Check the actual goal cell
+        try:
+            cost = self.get_cost_from_costmap_x_y(x, y)
+        except IndexError:
+            return None
+
+        def create_radial_offsets_coords(radius):
+            """
+            Creates an ordered by radius (without repetition)
+            generator of coordinates to explore around an initial point 0, 0
+            For example, radius 2 looks like:
+            [(-1, -1), (-1, 0), (-1, 1), (0, -1),  # from radius 1
+            (0, 1), (1, -1), (1, 0), (1, 1),  # from radius 1
+            (-2, -2), (-2, -1), (-2, 0), (-2, 1),
+            (-2, 2), (-1, -2), (-1, 2), (0, -2),
+            (0, 2), (1, -2), (1, 2), (2, -2),
+            (2, -1), (2, 0), (2, 1), (2, 2)]
+            """
+            # We store the previously given coordinates to not repeat them
+            # we use a Dict as to take advantage of its hash table to make it more efficient
+            coords = {}
+            # iterate increasing over every radius value...
+            for r in range(1, radius + 1):
+                # for this radius value... (both product and range are generators too)
+                tmp_coords = product(range(-r, r + 1), repeat=2)
+                # only yield new coordinates
+                for i, j in tmp_coords:
+                    if (i, j) != (0, 0) and not coords.get((i, j), False):
+                        coords[(i, j)] = True
+                        yield (i, j)
+
+        coords_to_explore = create_radial_offsets_coords(radius_obst)
+        for idx, radius_coords in reversed(list(enumerate(coords_to_explore))):
+            # for coords in radius_coords:
+            tmp_x, tmp_y = radius_coords
+            try:
+                    cost= self.get_cost_from_costmap_x_y(x + tmp_x, y + tmp_y)
+                # If accessing out of grid, just ignore
+            except IndexError:
+                    pass  
+            if cost >= cost_threshold:
+                #verify that the second circle is all of cost_treshold
+                center_probability = 0
+                coords_to_explore_center = create_radial_offsets_coords(radius_tollerance)
+                for idx_c, radius_coords_c in reversed(list(enumerate(coords_to_explore_center))):
+                    # for coords in radius_coords:
+                    #print(center_probability)
+                    tmp_x_c, tmp_y_c = radius_coords_c
+                    try:
+                        cost_c = self.get_cost_from_costmap_x_y(x + tmp_x_c, y + tmp_y_c)
+                        if(cost_c >=  cost_threshold ):
+                            center_probability +=1
+                    # If accessing out of grid, just ignore
+                    except IndexError:
+                        pass
+
+                if center_probability >= center_probability_prec:
+                    #print(center_probability)
+                    #print(center_probability_prec)
+                    coordinate.append([x + tmp_x, y + tmp_y])
+                    center_probability_prec = center_probability
+        x_mean = 0 
+        y_mean = 0 
+        for i in range (len(coordinate)):
+            x_mean += coordinate[i][0]
+            y_mean += coordinate[i][1]
+        x_mean /= (len(coordinate))
+        y_mean /= (len(coordinate))
+        return x_mean,y_mean
