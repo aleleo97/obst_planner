@@ -32,3 +32,7 @@ wait that the costmap of the proxy is initialized and then provide with rviz a i
 ```
 rosrun rviz rviz
 ```
+
+# Problems
+the tf function is all commented because I cannot use inside my ros developement studio
+the file try_tf is an example of how to use it, if there is an error due to tf tou can leave it all commented or just inspire you from the file that is provided
