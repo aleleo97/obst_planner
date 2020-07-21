@@ -36,3 +36,16 @@ rosrun rviz rviz
 # Problems
 the tf function is all commented because I cannot use inside my ros developement studio
 the file try_tf is an example of how to use it, if there is an error due to tf tou can leave it all commented or just inspire you from the file that is provided
+
+# BUG
+if this error occure : 
+
+<Traceback (most recent call last):
+  File "/home/user/catkin_ws/src/obst_planner/src/costmap.py",line 18, in <module>
+    print(ogm.get_cost_from_world_x_y(-1.196, 0.935))
+  File "/home/user/catkin_ws/src/obst_planner/src/costmap_manager.py", line 107, in get_cost_from_world_x_y
+    return self.get_cost_from_costmap_x_y(cx, cy)
+  File "/home/user/catkin_ws/src/obst_planner/src/costmap_manager.py", line 119, in get_cost_from_costmap_x_y
+    return self._grid_data[x][y]
+TypeError: 'NoneType' object has no attribute '__getitem__'>
+  recharge the program... the costmap need time to be correctly update 
