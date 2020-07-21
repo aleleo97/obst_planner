@@ -6,7 +6,7 @@ The radius is found by the area, it will calculate the number of costmap cell th
 After with an algo it will calculate the center of the circle and then it will pass the center to our convex opt class in order to calculate the trajectory.
 For security to the class of cvx we will pass a radius that is 1.5 the radius calculate previusly in order to be sure that the obstacle will be avoid.
 
-#how to use 
+# how to use 
 run a gazebo simulation with a world similar to my_world.world( a playpen without all the inside obstacle and only with a cone)
 ```
 roslaunch husky_gazebo husky_playpen.world 
