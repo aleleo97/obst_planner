@@ -6,14 +6,12 @@ from map_msgs.msg import OccupancyGridUpdate
 import numpy as np
 from itertools import product
 
-
 """
 Class to deal with OccupancyGrid in Python
 as in local / global costmaps.
 Author: Sammy Pfeiffer <Sammy.Pfeiffer at student.uts.edu.au> (it was all wrong)
 Modified: Alessandro Leonardi 
 """
-
 
 class OccupancyGridManager(object):
     def __init__(self, topic, subscribe_to_updates=False):
@@ -69,7 +67,6 @@ class OccupancyGridManager(object):
         rospy.logdebug("Got a full OccupancyGrid update")
         self._occ_grid_metadata = data.info
         # Contains resolution, width & height
-        # np.set_printoptions(threshold=99999999999, linewidth=200)
         self._grid_data = np.array(data.data,
                                    dtype=np.int8).reshape(data.info.height,
                                                           data.info.width)

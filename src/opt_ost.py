@@ -55,7 +55,7 @@ class ConvexOpt():
     #trajectory limitation 
     for t in range(0,self.N-1):
       #discrete trajectory with virtual control 
-        constr += [ xv[:,t+1] == self.Ad_list[t]*xv[:,t] + self.Bd_list[t] * uv[:,t] + self.Cd_list[t]]
+        constr += [ xv[:,t+1] == self.Ad_list[t]@xv[:,t] + self.Bd_list[t] @ uv[:,t] + self.Cd_list[t]]
         #norm(hog(:,k)) <= hogb(k)
         constr += [cp.norm(hog[:,t]) <= hogb[t]]
 
@@ -71,14 +71,14 @@ class ConvexOpt():
         #contrainte qui definit la presence d'un obstacle
         #position
         H = np.array([[1,0],[0,1]], dtype=float) #geometrie
-        if np.any(self.xante) and np.any(self.uante): #contrainte qui vient de la thèse de Miki
+        if np.any(self.xante) and np.any(self.uante) and len(self.p)>0: #contrainte qui vient de la thèse de Miki
             A = H
             b = np.dot(H,self.p)
             v = np.dot(H,self.xante[:2,t]) - b
             f = cp.norm2(v)
             constr += [nu >= 0]
-            constr += [f+np.transpose(A*v)*(xv[:2,t]-self.xante[:2,t])/f >= 1 - nu]
-            constr += [cp.norm(self.xante[:,t]-xv[:,t]) <= tau[t]]  #contrainte de distance entre deux points de deux iterations successives
+            constr += [f+np.transpose(A@v)@(xv[:2,t]-self.xante[:2,t])/f >= 1 - nu]
+            constr += [cp.norm(self.xante[:2,t]-xv[:2,t]) <= tau[t]]  #contrainte de distance entre deux points de deux iterations successives
     #limit the final velocity    
     constr += [cp.norm(uv[:,self.N-2]) <= 10e-9]
     #contrain of the velocity of convergence to the final point % ||target - x_k||_2 <= taui_k
