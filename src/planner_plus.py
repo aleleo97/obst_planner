@@ -10,7 +10,7 @@ import sympy as sp
 import numpy as np
 import time 
 from sympy import *
-from opt_ost import ConvexOpt
+from opt_ost_plus import ConvexOpt
 from model import DiscretizeandLinearizeGeneric
 from std_srvs.srv import Empty, EmptyResponse 
 from costmap_manager import OccupancyGridManager
@@ -30,7 +30,7 @@ haveInitial = 0
 haveGoal = 0
 #define the position of obstacle 
 p = []
-#define the geometrie 
+#define the geometry of obstacles
 H = []
 #define the radius of obstacle
 radius = 0
@@ -118,8 +118,7 @@ def planner():
 	goalSub = rospy.Subscriber('move_base_simple/goal', PoseStamped, goalCallback)
 	infoSub = rospy.Subscriber('map_metadata', MapMetaData, mapInfoCallback)
 	ogm = OccupancyGridManager('/move_base/global_costmap/costmap',subscribe_to_updates=False)  # default False
-	def find_center (x_i = 0, y_i = 0):
-		global radius
+	def find_center (x_i = -4 , y_i = -3):
 		x,y = ogm.get_costmap_x_y(x_i,y_i)
 		coordinate = ogm.get_closest_cell_over_cost(x=x, y=y, cost_threshold=98, max_radius=10)
 		if(coordinate[2] == -1):
@@ -151,6 +150,11 @@ def planner():
 			i += 1
 		return p 
 	global p
+    global H
+	p = find_obst(6)
+    #considering all obstacle as circle 
+	for i in range (len(p)):
+		H.append(np.array([[1,0],[0,1]], dtype=float))
 	# Set rate
 	r = rospy.spin() # 10 Hz
 		
@@ -206,6 +210,7 @@ def search():
     xante = [[None] * x_len * n]
     traj_fin = [[None]*x_len ]
     global p
+    global H
     #iteration to find the optimum result
     for i in range (20):
         #resolution discrete sistem
@@ -213,7 +218,7 @@ def search():
         Ad_list,Bd_list,Cd_list = eq.get_list()
 
         #call the Convex optimization class to resolve the problem 
-        cvx = ConvexOpt(n,x_init,x_fin,u_in,Ad_list,Bd_list,Cd_list,xante,uante,p)
+        cvx = ConvexOpt(n,x_init,x_fin,u_in,Ad_list,Bd_list,Cd_list,xante,uante,p,len(p),H)
         #tell to optimize the power 
         opt_pow = True
         #tell to optimize the rapidity of convergence

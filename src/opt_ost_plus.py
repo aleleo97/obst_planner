@@ -15,7 +15,7 @@ x[n_states]
 #You can change the number of states not the name
 n_states = Idx('n_states', 3)
 class ConvexOpt():
-  def __init__(self,N,x_init,x_fin,u_in,A_list,B_list,C_list,xante,uante,p):
+  def __init__(self,N,x_init,x_fin,u_in,A_list,B_list,C_list,xante,uante,p = 0,n_ost = 0,H = 0):
     #init the variables of the class
     self.N = N
     self.x_init = x_init
@@ -27,6 +27,8 @@ class ConvexOpt():
     self.xante = xante
     self.uante = uante
     self.p = p
+    self.H = H
+    self.n_ost = n_ost
     
   def CVXOPT(self,opt_power = False,opt_velocity = False):
     #save the number of states and inputs
@@ -70,15 +72,16 @@ class ConvexOpt():
 
         #contrainte qui definit la presence d'un obstacle
         #position
-        H = np.array([[1,0],[0,1]], dtype=float) #geometrie
-        if np.any(self.xante) and np.any(self.uante) and len(self.p)>0: #contrainte qui vient de la thèse de Miki
-            A = H
-            b = np.dot(H,self.p)
-            v = np.dot(H,self.xante[:2,t]) - b
-            f = cp.norm2(v)
-            constr += [nu >= 0]
-            constr += [f+np.transpose(A@v)@(xv[:2,t]-self.xante[:2,t])/f >= 1 - nu]
-            constr += [cp.norm(self.xante[:2,t]-xv[:2,t]) <= tau[t]]  #contrainte de distance entre deux points de deux iterations successives
+        for i in range(self.n_ost):
+            #H = self.H [i] #geometrie
+            if np.any(self.xante) and np.any(self.uante) and len(self.p)>0: #contrainte qui vient de la thèse de Miki
+                A = self.H[i]
+                b = np.dot(self.H[i],self.p[i])
+                v = np.dot(self.H[i],self.xante[:2,t]) - b
+                f = cp.norm2(v)
+                constr += [nu >= 0]
+                constr += [f+np.transpose(A@v)@(xv[:2,t]-self.xante[:2,t])/f >= 1 - nu]
+                constr += [cp.norm(self.xante[:2,t]-xv[:2,t]) <= tau[t]]  #contrainte de distance entre deux points de deux iterations successives
     #limit the final velocity    
     constr += [cp.norm(uv[:,self.N-2]) <= 10e-9]
     #contrain of the velocity of convergence to the final point % ||target - x_k||_2 <= taui_k
