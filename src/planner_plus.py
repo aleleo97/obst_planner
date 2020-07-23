@@ -118,7 +118,8 @@ def planner():
 	goalSub = rospy.Subscriber('move_base_simple/goal', PoseStamped, goalCallback)
 	infoSub = rospy.Subscriber('map_metadata', MapMetaData, mapInfoCallback)
 	ogm = OccupancyGridManager('/move_base/global_costmap/costmap',subscribe_to_updates=False)  # default False
-	def find_center (x_i = -4 , y_i = -3):
+	def find_center (x_i =  0, y_i = 0):
+		global radius
 		x,y = ogm.get_costmap_x_y(x_i,y_i)
 		coordinate = ogm.get_closest_cell_over_cost(x=x, y=y, cost_threshold=98, max_radius=10)
 		if(coordinate[2] == -1):
@@ -132,10 +133,11 @@ def planner():
 			center = ogm.get_center_obst(coordinate[0], coordinate[1],98,radius_obst = raggio*2,radius_tollerance = raggio)
 			p = ogm.get_world_x_y(center[0],center[1])
 			return [p[0],p[1]]
-    def find_obst(size):
+	def find_obst(size):
 		p = []
 		for i in range(-size, size+1):
 			for j in range (-size , size+1):
+				print("scanning the position : ")
 				print(i,j)
 				h = find_center(i,j)
 				if(h not in p):
@@ -150,12 +152,17 @@ def planner():
 			i += 1
 		return p 
 	global p
-    global H
+	global H
 	p = find_obst(6)
     #considering all obstacle as circle 
 	for i in range (len(p)):
 		H.append(np.array([[1,0],[0,1]], dtype=float))
 	# Set rate
+	print("Found that centers")
+	print(p)
+	print("Inizialized that geometry")
+	print(H)
+	print("Now you can start you navigation!")
 	r = rospy.spin() # 10 Hz
 		
 
@@ -222,7 +229,7 @@ def search():
         #tell to optimize the power 
         opt_pow = True
         #tell to optimize the rapidity of convergence
-        opt_conv = True
+        opt_conv = False
         xout,uout = cvx.CVXOPT(opt_pow,opt_conv)
         uante = np.copy(uout)
         xante = np.copy(xout)

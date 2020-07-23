@@ -1,5 +1,5 @@
 #! /usr/bin/env python
-#from tf import TransformListener
+#from ._tf2 import *
 import math
 import rospy
 import array
@@ -20,7 +20,11 @@ from costmap_manager import OccupancyGridManager
 init = PoseStamped()		# Initial position
 goal = PoseStamped()		# Goal position
 pos = PoseStamped()			# Current position
-mapInfo = MapMetaData()
+
+# Mapping
+costmap = OccupancyGrid()	# Costmap, the inflated occupancy grid
+mapInfo = MapMetaData()		# Useful information about the map (e.g. resolution, width, height)
+occupancyThresh = 50		# Value to decide safe zones for the robot in the occupancy grid
 
 # Planning
 gScore = []					# The gScore set
@@ -30,10 +34,6 @@ haveInitial = 0
 haveGoal = 0
 #define the position of obstacle 
 p = []
-#define the geometrie 
-H = []
-#define the radius of obstacle
-radius = 0
 #-----define the tf functions ----
 def euler_to_quaternion( yaw ,roll = 0, pitch = 0  ):
 
@@ -79,6 +79,10 @@ def goalCallback(msg):
 	goal = msg
 	haveGoal += 1
 
+# Costmap comes from /move_base_node/global_costmap/costmap topic, which is of the OccupancyGrid() type
+def costmapCallback(msg):
+	global costmap
+	costmap = msg
 	
 # Map meta data comes from /map_metadata topic, which is of the MapMetaData() type
 def mapInfoCallback(msg):
@@ -97,10 +101,9 @@ def service_callback(msg):
     path.header.frame_id = "map"
     #set the goal and init to zero
     haveGoal = 0
-    haveInitial = 0 
     # Publish the path continuously
     global pathPub
-    #print(p)
+    print(p)
     pathPub.publish(path)
     return EmptyResponse()
 
@@ -116,41 +119,21 @@ def planner():
 	odomSub = rospy.Subscriber('odom', Odometry, odomCallback)
 	initSub = rospy.Subscriber('initialpose', PoseWithCovarianceStamped, initCallback)
 	goalSub = rospy.Subscriber('move_base_simple/goal', PoseStamped, goalCallback)
+	cMapSub = rospy.Subscriber('move_base_node/global_costmap/costmap', OccupancyGrid, costmapCallback)
 	infoSub = rospy.Subscriber('map_metadata', MapMetaData, mapInfoCallback)
 	ogm = OccupancyGridManager('/move_base/global_costmap/costmap',subscribe_to_updates=False)  # default False
-	def find_center (x_i = 0, y_i = 0):
-		global radius
-		x,y = ogm.get_costmap_x_y(x_i,y_i)
-		coordinate = ogm.get_closest_cell_over_cost(x=x, y=y, cost_threshold=98, max_radius=10)
-		if(coordinate[2] == -1):
-			return [-10e6,-10e6]
-		else:
-			x_ost,y_ost = ogm.get_world_x_y(coordinate[0],coordinate[1])
-			area= (ogm.get_area_of_obst(coordinate[0], coordinate[1],98,20,True))
-			raggio = int (math.sqrt(area/(3.14)))
-			if(raggio > radius):
-				radius = raggio
-			center = ogm.get_center_obst(coordinate[0], coordinate[1],98,radius_obst = raggio*2,radius_tollerance = raggio)
-			p = ogm.get_world_x_y(center[0],center[1])
-			return [p[0],p[1]]
-    def find_obst(size):
-		p = []
-		for i in range(-size, size+1):
-			for j in range (-size , size+1):
-				print(i,j)
-				h = find_center(i,j)
-				if(h not in p):
-					p.append([h[0],h[1]])
-		c = len(p)
-		i = 0
-		while i < c :
-			if(p[i][0]>= size+0.5 or p[i][0] <= -size-0.5 or p[i][1] >= size+0.5 or p[i][1] <= -size-0.5):
-				p.pop(i)
-				c -= 1
-				i -= 1
-			i += 1
-		return p 
+	def find_center():
+        # Subscribe to the nav_msgs/OccupancyGrid topic
+		x,y = ogm.get_costmap_x_y(0, 0)
+		coordinate = ogm.get_closest_cell_over_cost(x=x, y=y, cost_threshold=98, max_radius=30)
+		area= (ogm.get_area_of_obst(coordinate[0], coordinate[1],98,15,True))
+		raggio = int (math.sqrt(area/(3.14)))
+		center = ogm.get_center_obst(coordinate[0], coordinate[1],98,radius_obst = raggio*2,radius_tollerance = raggio)
+		p = ogm.get_world_x_y(center[0],center[1])
+		p = np.array([p[0],p[1]])
+		return p
 	global p
+	p = find_center()
 	# Set rate
 	r = rospy.spin() # 10 Hz
 		
@@ -170,14 +153,9 @@ def search():
     x[n_states]
     #You can change the number of states not the name
     n_states = Idx('n_states', 3)
-    if(haveInitial > 0):
-        angle_init = quaternion_to_euler(init.pose.orientation.x,init.pose.orientation.y,init.pose.orientation.z,init.pose.orientation.w)
-        # steady state conditions
-        x_init = [init.pose.position.x,init.pose.position.y,angle_init[0]]
-    else : 
-        angle_init = quaternion_to_euler(pos.pose.orientation.x,pos.pose.orientation.y,pos.pose.orientation.z,pos.pose.orientation.w)
-        x_init = [pos.pose.position.x,pos.pose.position.y,angle_init[0]]  
-
+    angle_init = quaternion_to_euler(init.pose.orientation.x,init.pose.orientation.y,init.pose.orientation.z,init.pose.orientation.w)
+    # steady state conditions
+    x_init = [init.pose.position.x,init.pose.position.y,angle_init[0]]
     u_ss = [1,1]
     # final time
     tf = 10 #(seconds)
@@ -207,7 +185,7 @@ def search():
     traj_fin = [[None]*x_len ]
     global p
     #iteration to find the optimum result
-    for i in range (20):
+    for i in range (18):
         #resolution discrete sistem
         x1,x2,x3 = eq.disc(uw,n,dt,x_init)
         Ad_list,Bd_list,Cd_list = eq.get_list()
