@@ -22,7 +22,7 @@ roslaunch husky_gazebo husky_playpen.world
 ```
 run the proxy 
 ```
-rosrun obst_planner planner.py
+rosrun obst_planner planner_plus.py
 ```
 run the amcl and move base node in order to start the navigation 
 ```
